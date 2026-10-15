@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>היום שלי</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f6f5e">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1f2328;--mute:#6b7280;--accent:#2f6f5e;--line:#e5e1d8;--done:#9aa39f;--danger:#b4412f;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15181a;--card:#1f2326;--ink:#eceff1;--mute:#9aa3a8;--accent:#5fb89f;--line:#2c3236;--done:#6b7479;--danger:#e0735f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15181a;--card:#1f2326;--ink:#eceff1;--mute:#9aa3a8;--accent:#5fb89f;--line:#2c3236;--done:#6b7479;--danger:#e0735f;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;font-size:17px}
+main{max-width:560px;margin:0 auto;padding:20px 16px 110px}
+h1{margin:0;font-size:28px}
+.sub{color:var(--mute);margin-top:4px}
+h2.sec{margin:24px 0 10px;font-size:17px;color:var(--mute)}
+.empty.sm{padding:10px 0}
+.task{display:flex;align-items:center;gap:14px;width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;font:inherit;color:inherit;text-align:start;cursor:pointer}
+.box{flex:none;width:28px;height:28px;border:2px solid var(--accent);border-radius:8px;display:grid;place-items:center;color:transparent;font-size:18px;font-weight:700}
+.task.done .box{background:var(--accent);color:var(--bg)}
+.task.done .name{color:var(--done);text-decoration:line-through}
+.empty{color:var(--mute);text-align:center;padding:30px 0}
+h2{font-size:18px;margin:30px 0 10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row small{display:block;color:var(--mute)}
+.del{background:none;border:none;color:var(--danger);font:inherit;cursor:pointer;padding:6px 8px}
+.fab{position:fixed;inset-inline-start:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--bg);border:none;border-radius:28px;padding:15px 22px;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:5}
+.ov.on{display:flex}
+.sheet{background:var(--card);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px))}
+input[type=text]{width:100%;font:inherit;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.chip{border:1px solid var(--accent);background:none;color:var(--ink);border-radius:20px;padding:8px 14px;font:inherit;cursor:pointer}
+.chip.on{background:var(--accent);color:var(--bg)}
+.btns{display:flex;gap:10px;margin-top:6px}
+.btns button{flex:1;padding:13px;border-radius:12px;border:1px solid var(--line);font:inherit;cursor:pointer;background:none;color:var(--ink)}
+.btns .ok{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="wd"></h1>
+  <div class="sub" id="dates"></div>
+  <div id="list"></div>
+  <h2>כל המשימות הקבועות</h2>
+  <div id="manage"></div>
+</main>
+<button class="fab" id="add">+ משימה</button>
+
+<div class="ov" id="ov">
+  <div class="sheet">
+    <input type="text" id="nm" placeholder="שם המשימה (למשל: חברותא עם דוד)" maxlength="80">
+    <div class="chips" id="chips"></div>
+    <div class="btns"><button id="cancel">ביטול</button><button class="ok" id="save">שמירה</button></div>
+  </div>
+</div>
+
+<script>
+const KEY = 'todayApp.v1';
+const DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+let state = { tasks: [], done: {} };
+
+// --- שכבת אחסון: בשלב הבא אפשר להחליף רק את שתי הפונקציות האלה ---
+function load(){ try{ const s = localStorage.getItem(KEY); if(s) state = JSON.parse(s); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+const pad = n => String(n).padStart(2,'0');
+const dkey = d => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const daysLabel = t => t.days.length === 7 ? 'כל יום' : 'ימי ' + t.days.slice().sort().map(i => DAYS[i]).join(', ');
+
+function tasksFor(d){ return state.tasks.filter(t => t.days.includes(d.getDay())); }
+
+function render(){
+  const now = new Date(), k = dkey(now);
+  const done = state.done[k] || [];
+  const todays = tasksFor(now);
+  $('wd').textContent = 'יום ' + DAYS[now.getDay()];
+  let heb = '';
+  try{ heb = new Intl.DateTimeFormat('he-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'}).format(now); }catch(e){}
+  $('dates').textContent = heb + ' · ' + now.toLocaleDateString('he-IL');
+  const item = t => `<button class="task ${done.includes(t.id)?'done':''}" data-id="${t.id}"><span class="box">✓</span><span class="name">${esc(t.name)}</span></button>`;
+  const todo = todays.filter(t => !done.includes(t.id));
+  const fin = todays.filter(t => done.includes(t.id));
+  if(!todays.length){
+    $('list').innerHTML = '<div class="empty">אין משימות להיום.<br>לחץ על "+ משימה" כדי להוסיף.</div>';
+  } else {
+    $('list').innerHTML =
+      `<h2 class="sec">לא הושלמו (${todo.length})</h2>` + (todo.length ? todo.map(item).join('') : '<div class="empty sm">הכול הושלם 🎉</div>') +
+      `<h2 class="sec">הושלמו (${fin.length})</h2>` + (fin.length ? fin.map(item).join('') : '<div class="empty sm">עדיין לא סימנת כלום</div>');
+  }
+  $('manage').innerHTML = state.tasks.length ? state.tasks.map(t =>
+    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="del" data-del="${t.id}">מחיקה</button></div>`
+  ).join('') : '<div class="empty">עדיין אין משימות.</div>';
+}
+
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('.task'); if(!b) return;
+  const k = dkey(new Date()), id = b.dataset.id;
+  const arr = state.done[k] || (state.done[k] = []);
+  const i = arr.indexOf(id);
+  i >= 0 ? arr.splice(i,1) : arr.push(id);
+  save(); render();
+});
+
+$('manage').addEventListener('click', e => {
+  const id = e.target.dataset.del; if(!id) return;
+  const t = state.tasks.find(x => x.id === id);
+  if(!confirm('למחוק את "' + t.name + '"?')) return;
+  state.tasks = state.tasks.filter(x => x.id !== id);
+  save(); render();
+});
+
+// --- הוספת משימה ---
+let sel = new Set([0,1,2,3,4,5,6]);
+function drawChips(){
+  const all = sel.size === 7;
+  $('chips').innerHTML = `<button class="chip ${all?'on':''}" data-all="1">כל יום</button>` +
+    DAYS.map((n,i) => `<button class="chip ${!all && sel.has(i)?'on':''}" data-d="${i}">${n}</button>`).join('');
+}
+$('chips').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if(!c) return;
+  if(c.dataset.all){ sel = new Set([0,1,2,3,4,5,6]); }
+  else {
+    if(sel.size === 7) sel = new Set();   // יציאה ממצב "כל יום" לבחירה ידנית
+    const i = +c.dataset.d;
+    sel.has(i) ? sel.delete(i) : sel.add(i);
+  }
+  drawChips();
+});
+$('add').onclick = () => { $('nm').value = ''; sel = new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
+$('cancel').onclick = () => $('ov').classList.remove('on');
+$('save').onclick = () => {
+  const name = $('nm').value.trim();
+  if(!name){ $('nm').focus(); return; }
+  if(!sel.size){ alert('בחר לפחות יום אחד'); return; }
+  state.tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name, days: [...sel].sort() });
+  save(); $('ov').classList.remove('on'); render();
+};
+
+document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
+load(); render();
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>
