@@ -40,15 +40,34 @@ input[type=text]{width:100%;font:inherit;padding:12px;border-radius:10px;border:
 .btns{display:flex;gap:10px;margin-top:6px}
 .btns button{flex:1;padding:13px;border-radius:12px;border:1px solid var(--line);font:inherit;cursor:pointer;background:none;color:var(--ink)}
 .btns .ok{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+.tabs{display:flex;gap:8px;margin:16px 0 4px}
+.tab{flex:1;padding:10px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--ink);font:inherit;cursor:pointer}
+.tab.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:14px 0}
+.wk button{padding:12px 0;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.wk button.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+.wk button.today{outline:2px solid var(--accent);outline-offset:1px}
+.mini{background:none;border:1px solid var(--accent);color:var(--ink);border-radius:10px;padding:6px 12px;font:inherit;cursor:pointer}
+.mini.rm{border-color:var(--danger);color:var(--danger)}
 </style>
 </head>
 <body>
 <main>
   <h1 id="wd"></h1>
   <div class="sub" id="dates"></div>
-  <div id="list"></div>
-  <h2>כל המשימות הקבועות</h2>
-  <div id="manage"></div>
+  <div class="tabs"><button class="tab on" data-v="today">היום</button><button class="tab" data-v="week">עריכה שבועית</button></div>
+  <section id="v-today">
+    <div id="list"></div>
+    <h2>כל המשימות הקבועות</h2>
+    <div id="manage"></div>
+  </section>
+  <section id="v-week" hidden>
+    <div class="wk" id="wk"></div>
+    <h2 class="sec" id="wk-title"></h2>
+    <div id="wk-in"></div>
+    <h2 class="sec">משימות שלא ביום הזה</h2>
+    <div id="wk-out"></div>
+  </section>
 </main>
 <button class="fab" id="add">+ משימה</button>
 
@@ -73,17 +92,17 @@ const pad = n => String(n).padStart(2,'0');
 const dkey = d => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
-const daysLabel = t => t.days.length === 7 ? 'כל יום' : 'ימי ' + t.days.slice().sort().map(i => DAYS[i]).join(', ');
+const daysLabel = t => !t.days.length ? 'ללא ימים' : t.days.length === 7 ? 'כל יום' : 'ימי ' + t.days.slice().sort().map(i => DAYS[i]).join(', ');
 
 function tasksFor(d){ return state.tasks.filter(t => t.days.includes(d.getDay())); }
 
 function render(){
+  applyView();
   const now = new Date(), k = dkey(now);
   const done = state.done[k] || [];
   const todays = tasksFor(now);
   $('wd').textContent = 'יום ' + DAYS[now.getDay()];
-  let heb = '';
-  try{ heb = new Intl.DateTimeFormat('he-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'}).format(now); }catch(e){}
+  const heb = hebDate(now);
   $('dates').textContent = heb + ' · ' + now.toLocaleDateString('he-IL');
   const item = t => `<button class="task ${done.includes(t.id)?'done':''}" data-id="${t.id}"><span class="box">✓</span><span class="name">${esc(t.name)}</span></button>`;
   const todo = todays.filter(t => !done.includes(t.id));
@@ -134,7 +153,7 @@ $('chips').addEventListener('click', e => {
   }
   drawChips();
 });
-$('add').onclick = () => { $('nm').value = ''; sel = new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
+$('add').onclick = () => { $('nm').value = ''; sel = view === 'week' ? new Set([wkDay]) : new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
 $('cancel').onclick = () => $('ov').classList.remove('on');
 $('save').onclick = () => {
   const name = $('nm').value.trim();
@@ -143,6 +162,66 @@ $('save').onclick = () => {
   state.tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name, days: [...sel].sort() });
   save(); $('ov').classList.remove('on'); render();
 };
+
+// --- תאריך עברי באותיות: ד׳ חשוון התשפ״ז ---
+const GEM = [[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']];
+function gem(n){
+  let s = '';
+  for(const [v,c] of GEM){
+    while(n >= v){
+      if(v === 10 && (n === 15 || n === 16)){ s += n === 15 ? 'טו' : 'טז'; n = 0; break; }
+      s += c; n -= v;
+    }
+  }
+  return s.length > 1 ? s.slice(0,-1) + '״' + s.slice(-1) : s + '׳';
+}
+function hebDate(d){
+  try{
+    const f = new Intl.DateTimeFormat('he-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'});
+    const p = f.formatToParts(d), g = t => (p.find(x => x.type === t) || {}).value;
+    const day = parseInt(g('day'),10), yr = parseInt(g('year'),10);
+    if(!day || !yr || !g('month')) return f.format(d);
+    return gem(day) + ' ' + g('month') + ' ה' + gem(yr % 1000);
+  }catch(e){ return ''; }
+}
+
+// --- תצוגות: היום / עריכה שבועית ---
+const LET = 'אבגדהוש';
+let view = 'today', wkDay = new Date().getDay();
+function applyView(){
+  $('v-today').hidden = view !== 'today';
+  $('v-week').hidden = view !== 'week';
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+  $('add').textContent = view === 'week' ? '+ משימה חדשה' : '+ משימה';
+  if(view === 'week') renderWeek();
+}
+function renderWeek(){
+  const td = new Date().getDay();
+  $('wk').innerHTML = DAYS.map((n,i) => `<button class="${i===wkDay?'on':''} ${i===td?'today':''}" data-d="${i}">${LET[i]}׳</button>`).join('');
+  $('wk-title').textContent = 'יום ' + DAYS[wkDay];
+  const inn = state.tasks.filter(t => t.days.includes(wkDay));
+  const out = state.tasks.filter(t => !t.days.includes(wkDay));
+  $('wk-in').innerHTML = inn.length ? inn.map(t =>
+    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="mini rm" data-rm="${t.id}">הסר</button></div>`
+  ).join('') : '<div class="empty sm">אין משימות ביום הזה</div>';
+  $('wk-out').innerHTML = out.length ? out.map(t =>
+    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="mini" data-ad="${t.id}">הוסף ליום</button></div>`
+  ).join('') : '<div class="empty sm">כל המשימות כבר ביום הזה</div>';
+}
+document.querySelector('.tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if(!b) return;
+  view = b.dataset.v; render();
+});
+$('wk').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  wkDay = +b.dataset.d; render();
+});
+$('v-week').addEventListener('click', e => {
+  const rm = e.target.dataset.rm, ad = e.target.dataset.ad;
+  const t = state.tasks.find(x => x.id === (rm || ad)); if(!t) return;
+  t.days = rm ? t.days.filter(d => d !== wkDay) : [...t.days, wkDay].sort();
+  save(); render();
+});
 
 document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
 load(); render();
