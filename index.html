@@ -53,6 +53,18 @@ input[type=text]{width:100%;font:inherit;padding:13px;border-radius:12px;border:
 .wk button.today{outline:2px solid var(--accent);outline-offset:2px}
 .mini{background:none;border:1px solid var(--accent);color:var(--ink);border-radius:10px;padding:6px 12px;font:inherit;cursor:pointer}
 .mini.rm{border-color:var(--danger);color:var(--danger)}
+.task .name{display:block}
+.txt{display:block}
+.tm{display:block;font-size:14px;color:var(--mute);margin-top:3px}
+.tm.soon{color:#d98a1f;font-weight:700}
+.tm.over{color:var(--danger);font-weight:700}
+.task.soon .box{border-color:#d98a1f}
+.task.over .box{border-color:var(--danger)}
+.task.later{opacity:.42}
+.times{display:flex;gap:10px;margin:14px 0 6px}
+.times label{flex:1;font-size:14px;color:var(--mute)}
+.times input{width:100%;font:inherit;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-top:4px}
+.hint{font-size:13px;color:var(--mute);margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -81,6 +93,8 @@ input[type=text]{width:100%;font:inherit;padding:13px;border-radius:12px;border:
   <div class="sheet">
     <input type="text" id="nm" placeholder="שם המשימה (למשל: חברותא עם דוד)" maxlength="80">
     <div class="chips" id="chips"></div>
+    <div class="times"><label>משעה<input type="time" id="ts"></label><label>עד שעה<input type="time" id="te"></label></div>
+    <div class="hint">אפשר להשאיר ריק: בלי שעות המשימה פתוחה כל היום</div>
     <div class="btns"><button id="cancel">ביטול</button><button class="ok" id="save">שמירה</button></div>
   </div>
 </div>
@@ -110,18 +124,31 @@ function render(){
   $('wd').textContent = 'יום ' + DAYS[now.getDay()];
   const heb = hebDate(now);
   $('dates').textContent = heb + ' · ' + now.toLocaleDateString('he-IL');
-  const item = t => `<button class="task ${done.includes(t.id)?'done':''}" data-id="${t.id}"><span class="box">✓</span><span class="name">${esc(t.name)}</span></button>`;
-  const todo = todays.filter(t => !done.includes(t.id));
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const item = (t, mode) => {
+    const d = done.includes(t.id);
+    let tm = timeText(t);
+    if(!d && mode === 'soon'){ const left = toMin(t.end) - nowMin; tm = left > 0 ? `נשארו ${left} דקות` : 'הדקה האחרונה'; }
+    if(!d && mode === 'over') tm = `הזמן עבר (${t.end})`;
+    const cls = d ? 'done' : mode;
+    return `<button class="task ${cls}" data-id="${t.id}"><span class="box">✓</span><span class="txt"><span class="name">${esc(t.name)}</span>${tm ? `<small class="tm ${d?'':mode}">${tm}</small>` : ''}</span></button>`;
+  };
+  const rank = { over: 0, soon: 1, active: 2 };
+  const modes = {};
+  todays.forEach(t => { if(!done.includes(t.id)) modes[t.id] = statusOf(t, nowMin); });
+  const todo = todays.filter(t => modes[t.id] && modes[t.id] !== 'later').sort((x,y) => rank[modes[x.id]] - rank[modes[y.id]]);
+  const later = todays.filter(t => modes[t.id] === 'later');
   const fin = todays.filter(t => done.includes(t.id));
   if(!todays.length){
     $('list').innerHTML = '<div class="empty">אין משימות להיום.<br>לחץ על "+ משימה" כדי להוסיף.</div>';
   } else {
     $('list').innerHTML =
-      `<h2 class="sec">לא הושלמו (${todo.length})</h2>` + (todo.length ? todo.map(item).join('') : '<div class="empty sm">הכול הושלם 🎉</div>') +
-      `<h2 class="sec">הושלמו (${fin.length})</h2>` + (fin.length ? fin.map(item).join('') : '<div class="empty sm">עדיין לא סימנת כלום</div>');
+      `<h2 class="sec">לא הושלמו (${todo.length})</h2>` + (todo.length ? todo.map(t => item(t, modes[t.id])).join('') : `<div class="empty sm">${later.length ? 'אין משימות פעילות כרגע' : 'הכול הושלם 🎉'}</div>`) +
+      (later.length ? `<h2 class="sec">עוד לא רלוונטי (${later.length})</h2>` + later.map(t => item(t, 'later')).join('') : '') +
+      `<h2 class="sec">הושלמו (${fin.length})</h2>` + (fin.length ? fin.map(t => item(t, 'done')).join('') : '<div class="empty sm">עדיין לא סימנת כלום</div>');
   }
   $('manage').innerHTML = state.tasks.length ? state.tasks.map(t =>
-    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="del" data-del="${t.id}">מחיקה</button></div>`
+    `<div class="row"><div>${esc(t.name)}<small>${metaLabel(t)}</small></div><button class="del" data-del="${t.id}">מחיקה</button></div>`
   ).join('') : '<div class="empty">עדיין אין משימות.</div>';
 }
 
@@ -159,15 +186,27 @@ $('chips').addEventListener('click', e => {
   }
   drawChips();
 });
-$('add').onclick = () => { $('nm').value = ''; sel = view === 'week' ? new Set([wkDay]) : new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
+$('add').onclick = () => { $('nm').value = ''; $('ts').value = ''; $('te').value = ''; sel = view === 'week' ? new Set([wkDay]) : new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
 $('cancel').onclick = () => $('ov').classList.remove('on');
 $('save').onclick = () => {
   const name = $('nm').value.trim();
   if(!name){ $('nm').focus(); return; }
   if(!sel.size){ alert('בחר לפחות יום אחד'); return; }
-  state.tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name, days: [...sel].sort() });
+  const ts = $('ts').value, te = $('te').value;
+  if(ts && te && te <= ts){ alert('שעת הסיום חייבת להיות אחרי שעת ההתחלה'); return; }
+  state.tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name, days: [...sel].sort(), start: ts, end: te });
   save(); $('ov').classList.remove('on'); render();
 };
+
+// --- שעות למשימות ---
+const toMin = h => { const [a,b] = h.split(':'); return (+a)*60 + (+b); };
+const timeText = t => t.start && t.end ? `${t.start} עד ${t.end}` : t.start ? 'מ-' + t.start : t.end ? 'עד ' + t.end : '';
+const metaLabel = t => daysLabel(t) + (timeText(t) ? ' · ' + timeText(t) : '');
+function statusOf(t, nowMin){
+  if(nowMin < toMin(t.start || '00:00')) return 'later';
+  if(t.end){ const left = toMin(t.end) - nowMin; if(left < 0) return 'over'; if(left <= 30) return 'soon'; }
+  return 'active';
+}
 
 // --- תאריך עברי באותיות: ד׳ חשוון התשפ״ז ---
 const GEM = [[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']];
@@ -208,10 +247,10 @@ function renderWeek(){
   const inn = state.tasks.filter(t => t.days.includes(wkDay));
   const out = state.tasks.filter(t => !t.days.includes(wkDay));
   $('wk-in').innerHTML = inn.length ? inn.map(t =>
-    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="mini rm" data-rm="${t.id}">הסר</button></div>`
+    `<div class="row"><div>${esc(t.name)}<small>${metaLabel(t)}</small></div><button class="mini rm" data-rm="${t.id}">הסר</button></div>`
   ).join('') : '<div class="empty sm">אין משימות ביום הזה</div>';
   $('wk-out').innerHTML = out.length ? out.map(t =>
-    `<div class="row"><div>${esc(t.name)}<small>${daysLabel(t)}</small></div><button class="mini" data-ad="${t.id}">הוסף ליום</button></div>`
+    `<div class="row"><div>${esc(t.name)}<small>${metaLabel(t)}</small></div><button class="mini" data-ad="${t.id}">הוסף ליום</button></div>`
   ).join('') : '<div class="empty sm">כל המשימות כבר ביום הזה</div>';
 }
 document.querySelector('.tabs').addEventListener('click', e => {
@@ -231,6 +270,7 @@ $('v-week').addEventListener('click', e => {
 
 document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
 load(); render();
+setInterval(() => { if(!document.hidden) render(); }, 30000);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 </body>
