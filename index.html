@@ -64,6 +64,9 @@ input[type=text]{width:100%;font:inherit;padding:13px;border-radius:12px;border:
 .times{display:flex;gap:10px;margin:14px 0 6px}
 .times label{flex:1;font-size:14px;color:var(--mute)}
 .times input{width:100%;font:inherit;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-top:4px}
+.tsel{display:flex;align-items:center;gap:4px;margin-top:4px}
+.tsel select{flex:1;min-width:0;font:inherit;padding:11px 4px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.tsel b{color:var(--mute)}
 .hint{font-size:13px;color:var(--mute);margin-bottom:12px}
 </style>
 </head>
@@ -93,7 +96,7 @@ input[type=text]{width:100%;font:inherit;padding:13px;border-radius:12px;border:
   <div class="sheet">
     <input type="text" id="nm" placeholder="שם המשימה (למשל: חברותא עם דוד)" maxlength="80">
     <div class="chips" id="chips"></div>
-    <div class="times"><label>משעה<input type="time" id="ts"></label><label>עד שעה<input type="time" id="te"></label></div>
+    <div class="times"><label>משעה<span class="tsel" dir="ltr"><select id="tsh"></select><b>:</b><select id="tsm"></select></span></label><label>עד שעה<span class="tsel" dir="ltr"><select id="teh"></select><b>:</b><select id="tem"></select></span></label></div>
     <div class="hint">אפשר להשאיר ריק: בלי שעות המשימה פתוחה כל היום</div>
     <div class="btns"><button id="cancel">ביטול</button><button class="ok" id="save">שמירה</button></div>
   </div>
@@ -169,6 +172,12 @@ $('manage').addEventListener('click', e => {
   save(); render();
 });
 
+// --- בחירת שעה בפורמט 24 שעות ---
+['tsh','teh'].forEach(id => $(id).innerHTML = '<option value="">--</option>' + Array.from({length:24}, (_,i) => `<option>${pad(i)}</option>`).join(''));
+['tsm','tem'].forEach(id => $(id).innerHTML = Array.from({length:60}, (_,i) => `<option>${pad(i)}</option>`).join(''));
+const getT = (h,m) => $(h).value ? $(h).value + ':' + $(m).value : '';
+const clearT = () => { ['tsh','teh'].forEach(i => $(i).value = ''); ['tsm','tem'].forEach(i => $(i).value = '00'); };
+
 // --- הוספת משימה ---
 let sel = new Set([0,1,2,3,4,5,6]);
 function drawChips(){
@@ -186,13 +195,13 @@ $('chips').addEventListener('click', e => {
   }
   drawChips();
 });
-$('add').onclick = () => { $('nm').value = ''; $('ts').value = ''; $('te').value = ''; sel = view === 'week' ? new Set([wkDay]) : new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
+$('add').onclick = () => { $('nm').value = ''; clearT(); sel = view === 'week' ? new Set([wkDay]) : new Set([0,1,2,3,4,5,6]); drawChips(); $('ov').classList.add('on'); $('nm').focus(); };
 $('cancel').onclick = () => $('ov').classList.remove('on');
 $('save').onclick = () => {
   const name = $('nm').value.trim();
   if(!name){ $('nm').focus(); return; }
   if(!sel.size){ alert('בחר לפחות יום אחד'); return; }
-  const ts = $('ts').value, te = $('te').value;
+  const ts = getT('tsh','tsm'), te = getT('teh','tem');
   if(ts && te && te <= ts){ alert('שעת הסיום חייבת להיות אחרי שעת ההתחלה'); return; }
   state.tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name, days: [...sel].sort(), start: ts, end: te });
   save(); $('ov').classList.remove('on'); render();
