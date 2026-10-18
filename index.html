@@ -94,7 +94,7 @@ input[type=text]{width:100%;font:inherit;padding:13px;border-radius:12px;border:
 
 <div class="ov" id="ov">
   <div class="sheet">
-    <input type="text" id="nm" placeholder="שם המשימה (למשל: חברותא עם דוד)" maxlength="80">
+    <input type="text" id="nm" placeholder="שם המשימה" maxlength="80">
     <div class="chips" id="chips"></div>
     <div class="times"><label>משעה<span class="tsel" dir="ltr"><select id="tsh"></select><b>:</b><select id="tsm"></select></span></label><label>עד שעה<span class="tsel" dir="ltr"><select id="teh"></select><b>:</b><select id="tem"></select></span></label></div>
     <div class="hint">אפשר להשאיר ריק: בלי שעות המשימה פתוחה כל היום</div>
@@ -117,7 +117,7 @@ const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',
 const $ = id => document.getElementById(id);
 const daysLabel = t => !t.days.length ? 'ללא ימים' : t.days.length === 7 ? 'כל יום' : 'ימי ' + t.days.slice().sort().map(i => DAYS[i]).join(', ');
 
-function tasksFor(d){ return state.tasks.filter(t => t.days.includes(d.getDay())); }
+function tasksFor(d){ return state.tasks.filter(t => t.days.includes(d.getDay())).sort(byTime); }
 
 function render(){
   applyView();
@@ -208,6 +208,7 @@ $('save').onclick = () => {
 };
 
 // --- שעות למשימות ---
+const byTime = (a, b) => (a.start ? toMin(a.start) : 1e9) - (b.start ? toMin(b.start) : 1e9);
 const toMin = h => { const [a,b] = h.split(':'); return (+a)*60 + (+b); };
 const timeText = t => t.start && t.end ? `${t.start} עד ${t.end}` : t.start ? 'מ-' + t.start : t.end ? 'עד ' + t.end : '';
 const metaLabel = t => daysLabel(t) + (timeText(t) ? ' · ' + timeText(t) : '');
@@ -253,7 +254,7 @@ function renderWeek(){
   const td = new Date().getDay();
   $('wk').innerHTML = DAYS.map((n,i) => `<button class="${i===wkDay?'on':''} ${i===td?'today':''}" data-d="${i}">${LET[i]}׳</button>`).join('');
   $('wk-title').textContent = 'יום ' + DAYS[wkDay];
-  const inn = state.tasks.filter(t => t.days.includes(wkDay));
+  const inn = state.tasks.filter(t => t.days.includes(wkDay)).sort(byTime);
   const out = state.tasks.filter(t => !t.days.includes(wkDay));
   $('wk-in').innerHTML = inn.length ? inn.map(t =>
     `<div class="row"><div>${esc(t.name)}<small>${metaLabel(t)}</small></div><button class="mini rm" data-rm="${t.id}">הסר</button></div>`
