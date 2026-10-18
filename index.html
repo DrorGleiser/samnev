@@ -130,7 +130,7 @@ function render(){
   const nowMin = now.getHours()*60 + now.getMinutes();
   const item = (t, mode) => {
     const d = done.includes(t.id);
-    let tm = timeText(t);
+    let tm = timeText(t) || 'כל היום';
     if(!d && mode === 'soon'){ const left = toMin(t.end) - nowMin; tm = left > 0 ? `נשארו ${left} דקות` : 'הדקה האחרונה'; }
     if(!d && mode === 'over') tm = `הזמן עבר (${t.end})`;
     const cls = d ? 'done' : mode;
